@@ -9,6 +9,7 @@ const navItems = [
   { href: "/reports", label: "P&L Report", icon: "📊" },
   { href: "/tax", label: "Tax", icon: "🏛️" },
   { href: "/invoices", label: "Invoices", icon: "🧾" },
+  { href: "/payroll", label: "Payroll", icon: "💰" },
   { href: "/transactions", label: "Transactions", icon: "📝" },
 ];
 
