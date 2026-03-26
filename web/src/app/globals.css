@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-surface: 250 250 245;
+    --color-surface-raised: 255 255 255;
+    --color-surface-alt: 245 245 244;
+    --color-neutral-text: 28 25 23;
+    --color-neutral-secondary: 68 64 60;
+    --color-neutral-muted: 120 113 108;
+    --color-neutral-faint: 168 162 158;
+    --color-neutral-border: 214 211 209;
+    --color-neutral-border-light: 231 229 228;
+    --color-primary: 27 67 50;
+    --color-primary-light: 45 106 79;
+    --color-success: 22 101 52;
+    --color-success-bg: 240 253 244;
+    --color-danger: 153 27 27;
+    --color-danger-bg: 254 242 242;
+    --color-warning: 146 64 14;
+    --color-warning-bg: 255 251 235;
+    --color-info: 30 64 175;
+    --color-info-bg: 239 246 255;
+  }
+
+  [data-theme="dark"] {
+    --color-surface: 28 25 23;
+    --color-surface-raised: 41 37 36;
+    --color-surface-alt: 55 50 48;
+    --color-neutral-text: 250 250 249;
+    --color-neutral-secondary: 214 211 209;
+    --color-neutral-muted: 168 162 158;
+    --color-neutral-faint: 120 113 108;
+    --color-neutral-border: 68 64 60;
+    --color-neutral-border-light: 41 37 36;
+    --color-primary: 74 222 128;
+    --color-primary-light: 134 239 172;
+    --color-success: 134 239 172;
+    --color-success-bg: 20 83 45;
+    --color-danger: 252 165 165;
+    --color-danger-bg: 69 26 26;
+    --color-warning: 252 211 77;
+    --color-warning-bg: 69 26 3;
+    --color-info: 147 197 253;
+    --color-info-bg: 30 58 95;
+  }
+
+  body {
+    font-family: "DM Sans", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: "Plus Jakarta Sans", sans-serif;
+  }
+
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+
+  *:focus-visible {
+    outline: 2px solid rgb(var(--color-primary));
+    outline-offset: 2px;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  .skeleton {
+    background: linear-gradient(90deg, rgb(var(--color-neutral-border-light)) 25%, rgb(var(--color-surface-alt)) 50%, rgb(var(--color-neutral-border-light)) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+  }
+}

@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  transaction-svc:
+    name: Transaction Service (Go)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Lint
+        working-directory: services/transaction-svc
+        run: |
+          go install golang.org/x/tools/cmd/goimports@latest
+          test -z "$(goimports -l .)"
+          go vet ./...
+      - name: Test
+        working-directory: services/transaction-svc
+        run: go test -v -race -coverprofile=coverage.out ./...
+      - name: Build
+        working-directory: services/transaction-svc
+        run: go build -o /dev/null .
+
+  analytics-svc:
+    name: Analytics Service (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: services/analytics-svc
+        run: |
+          pip install -r requirements.txt
+          pip install ruff
+      - name: Lint
+        working-directory: services/analytics-svc
+        run: ruff check .
+      - name: Test
+        working-directory: services/analytics-svc
+        run: pytest -v --tb=short
+
+  web:
+    name: Web Frontend (Next.js)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci --ignore-scripts 2>/dev/null || npm install
+      - name: Lint
+        working-directory: web
+        run: npm run lint --if-present
+      - name: Build
+        working-directory: web
+        run: npm run build --if-present

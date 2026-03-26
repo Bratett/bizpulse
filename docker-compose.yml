@@ -1,0 +1,89 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bizpulse}
+      POSTGRES_USER: ${POSTGRES_USER:-bizpulse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
+      POSTGRES_READONLY_USER: ${POSTGRES_READONLY_USER:-bizpulse_readonly}
+      POSTGRES_READONLY_PASSWORD: ${POSTGRES_READONLY_PASSWORD:-changeme_in_production}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bizpulse}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  transaction-svc:
+    build:
+      context: ./services/transaction-svc
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${TRANSACTION_SVC_PORT:-8080}:8080"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-bizpulse}
+      POSTGRES_USER: ${POSTGRES_USER:-bizpulse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-changeme_generate_a_real_secret}
+      JWT_EXPIRY_HOURS: ${JWT_EXPIRY_HOURS:-24}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  analytics-svc:
+    build:
+      context: ./services/analytics-svc
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${ANALYTICS_SVC_PORT:-8081}:8081"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-bizpulse}
+      POSTGRES_READONLY_USER: ${POSTGRES_READONLY_USER:-bizpulse_readonly}
+      POSTGRES_READONLY_PASSWORD: ${POSTGRES_READONLY_PASSWORD:-changeme_in_production}
+      JWT_SECRET: ${JWT_SECRET:-changeme_generate_a_real_secret}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://transaction-svc:8080
+      NEXT_PUBLIC_ANALYTICS_URL: http://analytics-svc:8081
+    depends_on:
+      - transaction-svc
+      - analytics-svc
+
+volumes:
+  pgdata:
