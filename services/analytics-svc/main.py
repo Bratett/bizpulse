@@ -1,5 +1,5 @@
 import os
-from datetime import date, timedelta
+from datetime import date
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -49,7 +49,7 @@ async def get_profit_loss(
     try:
         report = profit_and_loss(user["business_id"], date_from, date_to)
         return report
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=500,
             detail={"error": {"code": "INTERNAL_ERROR", "message": "Failed to generate report"}},
@@ -65,7 +65,7 @@ async def get_profit_loss_trend(
     try:
         trend = profit_and_loss_trend(user["business_id"], months)
         return {"trend": trend, "months_requested": months}
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=500,
             detail={"error": {"code": "INTERNAL_ERROR", "message": "Failed to generate trend"}},

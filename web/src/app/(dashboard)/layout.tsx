@@ -7,6 +7,8 @@ import { logout } from "@/lib/api";
 
 const navItems = [
   { href: "/reports", label: "P&L Report", icon: "📊" },
+  { href: "/tax", label: "Tax", icon: "🏛️" },
+  { href: "/invoices", label: "Invoices", icon: "🧾" },
   { href: "/transactions", label: "Transactions", icon: "📝" },
 ];
 
@@ -110,7 +112,7 @@ export default function DashboardLayout({
         {/* Nav links */}
         <nav className="flex-1 px-2 py-4 space-y-1" aria-label="Main navigation">
           {navItems.map((item) => {
-            const isActive = pathname === item.href;
+            const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
             return (
               <Link
                 key={item.href}
@@ -206,7 +208,7 @@ export default function DashboardLayout({
       >
         <div className="flex">
           {navItems.map((item) => {
-            const isActive = pathname === item.href;
+            const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
             return (
               <Link
                 key={item.href}

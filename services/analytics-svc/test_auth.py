@@ -11,7 +11,6 @@ from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException
-from fastapi.testclient import TestClient
 from jose import jwt
 
 # Test secret — used only in tests, never in production

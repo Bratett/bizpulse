@@ -71,6 +71,25 @@ services:
       postgres:
         condition: service_healthy
 
+  compliance-svc:
+    build:
+      context: ./services/compliance-svc
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${COMPLIANCE_SVC_PORT:-8082}:8082"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-bizpulse}
+      POSTGRES_USER: ${POSTGRES_USER:-bizpulse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
+      JWT_SECRET: ${JWT_SECRET:-changeme_generate_a_real_secret}
+      COMPLIANCE_SVC_PORT: 8082
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   web:
     build:
       context: ./web
@@ -81,9 +100,11 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: http://transaction-svc:8080
       NEXT_PUBLIC_ANALYTICS_URL: http://analytics-svc:8081
+      NEXT_PUBLIC_COMPLIANCE_URL: http://compliance-svc:8082
     depends_on:
       - transaction-svc
       - analytics-svc
+      - compliance-svc
 
 volumes:
   pgdata:

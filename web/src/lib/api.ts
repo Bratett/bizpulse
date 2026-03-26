@@ -155,3 +155,202 @@ export function pesewasToCedis(pesewas: number): string {
 export function cedisToPesewas(cedis: number): number {
   return Math.round(cedis * 100);
 }
+
+// ---------------------------------------------------------------------------
+// Compliance / Tax API
+// ---------------------------------------------------------------------------
+
+const COMPLIANCE_URL =
+  process.env.NEXT_PUBLIC_COMPLIANCE_URL || "http://localhost:8082";
+
+// Types
+
+export interface TaxPeriod {
+  id: string;
+  business_id: string;
+  period_type: "VAT_MONTHLY" | "CIT_ANNUAL" | "WHT_MONTHLY";
+  start_date: string;
+  end_date: string;
+  status: "DRAFT" | "COMPUTED" | "REVIEWED" | "FILED";
+  computed_at: string | null;
+  filed_at: string | null;
+  created_at: string;
+  total_liability_pesewas: number;
+}
+
+export interface TaxSummary {
+  business_id: string;
+  total_outstanding_pesewas: number;
+  next_deadline: string | null;
+  periods: TaxPeriod[];
+  rates_as_of: string;
+}
+
+export interface VATReport {
+  period_id: string;
+  business_name: string;
+  business_tin: string | null;
+  period_start: string;
+  period_end: string;
+  taxable_sales_pesewas: number;
+  output_vat_pesewas: number;
+  taxable_purchases_pesewas: number;
+  input_vat_pesewas: number;
+  net_vat_payable_pesewas: number;
+  nhil_pesewas: number;
+  getfund_pesewas: number;
+  total_payable_pesewas: number;
+  computation_date: string | null;
+}
+
+export interface CITReport {
+  period_id: string;
+  business_name: string;
+  business_tin: string | null;
+  period_start: string;
+  period_end: string;
+  total_revenue_pesewas: number;
+  total_deductible_expenses_pesewas: number;
+  non_deductible_expenses_pesewas: number;
+  net_profit_pesewas: number;
+  cit_rate_bps: number;
+  cit_liability_pesewas: number;
+  computation_date: string | null;
+}
+
+export interface TaxRate {
+  rate_type: string;
+  rate_code: string;
+  percentage_basis_points: number;
+  effective_from: string;
+  effective_to: string | null;
+}
+
+export interface TaxComputationItem {
+  rate_type: string;
+  rate_code: string;
+  base_amount_pesewas: number;
+  rate_bps: number;
+  computed_amount_pesewas: number;
+  computation_details: Record<string, unknown> | null;
+}
+
+export interface InvoiceLineItem {
+  description: string;
+  quantity: number;
+  unit_price_pesewas: number;
+  vat_applicable: boolean;
+}
+
+// Functions
+
+export async function getTaxSummary(): Promise<TaxSummary> {
+  return request<TaxSummary>(COMPLIANCE_URL, "/tax/summary");
+}
+
+export async function getTaxPeriods(filters?: {
+  period_type?: string;
+  status?: string;
+}): Promise<TaxPeriod[]> {
+  const params = new URLSearchParams();
+  if (filters?.period_type) params.set("period_type", filters.period_type);
+  if (filters?.status) params.set("status", filters.status);
+  const qs = params.toString();
+  return request<TaxPeriod[]>(
+    COMPLIANCE_URL,
+    `/tax/periods${qs ? `?${qs}` : ""}`
+  );
+}
+
+export async function createTaxPeriod(data: {
+  period_type: string;
+  start_date: string;
+  end_date: string;
+}): Promise<TaxPeriod> {
+  return request<TaxPeriod>(COMPLIANCE_URL, "/tax/periods", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function computeTaxPeriod(
+  periodId: string
+): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>(
+    COMPLIANCE_URL,
+    `/tax/periods/${periodId}/compute`,
+    { method: "POST" }
+  );
+}
+
+export async function getVATReport(periodId: string): Promise<VATReport> {
+  return request<VATReport>(
+    COMPLIANCE_URL,
+    `/tax/reports/vat/${periodId}`
+  );
+}
+
+export async function getCITReport(periodId: string): Promise<CITReport> {
+  return request<CITReport>(
+    COMPLIANCE_URL,
+    `/tax/reports/cit/${periodId}`
+  );
+}
+
+export async function markPeriodFiled(
+  periodId: string,
+  filingReference?: string,
+  notes?: string
+): Promise<{ status: string; period_id: string; filing_id: string; filed_at: string }> {
+  return request(COMPLIANCE_URL, `/tax/periods/${periodId}/mark-filed`, {
+    method: "POST",
+    body: JSON.stringify({
+      filing_reference: filingReference || null,
+      filing_method: "MANUAL",
+      notes: notes || null,
+    }),
+  });
+}
+
+export async function getTaxRates(): Promise<{
+  rates: TaxRate[];
+  as_of: string;
+}> {
+  return request(COMPLIANCE_URL, "/tax/rates");
+}
+
+export async function updateTaxCategory(
+  transactionId: string,
+  taxCategory: string
+): Promise<{ transaction_id: string; tax_category: string }> {
+  return request(COMPLIANCE_URL, `/tax/metadata/${transactionId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ tax_category: taxCategory }),
+  });
+}
+
+export async function generateInvoicePreview(data: {
+  customer_name: string;
+  customer_tin?: string;
+  line_items: InvoiceLineItem[];
+  notes?: string;
+}): Promise<Blob> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  const res = await fetch(`${COMPLIANCE_URL}/invoices/preview`, {
+    method: "POST",
+    headers,
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(
+      res.status,
+      body?.error?.code || "UNKNOWN",
+      body?.error?.message || "Failed to generate invoice"
+    );
+  }
+  return res.blob();
+}

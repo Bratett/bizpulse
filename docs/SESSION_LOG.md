@@ -173,6 +173,65 @@ Create the foundational architecture and implementation-reference documentation 
 
 ---
 
+## Session: Sprint 1 — Tax Season Ready (2026-03-26)
+
+### Completed
+1. **compliance-svc (Python/FastAPI)** — new service with 10 API endpoints
+   - `tax_engine.py`: VAT, NHIL/GETFund (5% combined), CIT, WHT computation logic
+   - `main.py`: REST API with auth, validation, audit logging, DB transactions
+   - `reports.py`: GRA-formatted PDF generation via weasyprint (SSRF blocked)
+   - `database.py`: read-write connection pool with `execute_in_transaction`
+   - `models.py`: Pydantic models for all request/response types
+   - `auth.py`, `config.py`: JWT verification and env config (reused analytics-svc patterns)
+   - `Dockerfile`: Python 3.12 + weasyprint system deps
+   - 57 tests passing (46 tax engine + 11 API)
+
+2. **Database migrations**
+   - `000003_tax_tables.up.sql`: tax_periods, tax_computations, filing_records
+   - `000004_tax_metadata.up.sql`: transaction_tax_metadata (separate from append-only transactions table)
+
+3. **Web PWA — Tax Dashboard**
+   - `tax/page.tsx`: Tax overview with hero liability card, deadline countdown, period cards, create period form
+   - `tax/[periodId]/page.tsx`: Period detail with computation breakdown, status timeline, export actions
+   - `invoices/page.tsx`: Invoice preview with dynamic line items, VAT computation, PDF generation
+   - Updated `layout.tsx` with Tax and Invoices nav items
+   - Updated `api.ts` with 10 compliance API functions
+
+4. **Infrastructure**
+   - `docker-compose.yml`: Added compliance-svc (port 8082, read-write DB)
+   - `ci.yml`: Added compliance-svc CI job + fixed branch target (main→master)
+   - `.env.example`: Added COMPLIANCE_SVC_PORT, NEXT_PUBLIC_COMPLIANCE_URL
+
+### Decisions Made
+- **transaction_tax_metadata as separate table** — append-only trigger on transactions blocks ALTER TABLE, so tax categorization metadata lives in its own mutable table (joined at query time)
+- **PAYE deferred to Sprint 2** — requires payroll/employee data model that doesn't exist
+- **VAT input simplified** — rate applied to STANDARD_RATED expenses (VAT-exclusive assumption documented)
+- **NHIL + GETFund queried separately** — 2.5% each = 5% total, not 2.5% combined
+- **Server-side PDF via weasyprint** — with SSRF blocking (url_fetcher returns empty payload)
+- **Invoices client-side only** — no backend persistence in Sprint 1; validates feature first
+- **Full WCAG 2.1 AA** — 44px touch targets, aria-labels, keyboard nav, contrast ratios
+
+### Test Results
+- compliance-svc: 57 passing (46 tax engine + 11 API)
+- analytics-svc: 44 passing (unchanged from Sprint 0)
+- transaction-svc: 30 passing (unchanged, Go not available locally — passes in CI)
+- TypeScript: zero errors
+- Total: 131 tests across all services
+
+### Risks / Blockers
+- GRA Certified Tax Software registration not started (3-6 month lead time — CRITICAL PATH)
+- GRA tax rates in seed data not verified against current rates (HUMAN-GATED)
+- DPC registration not started
+- weasyprint not installable on Windows dev — PDF generation only works in Docker/Linux CI
+
+### Next Steps
+- Deploy to staging (AWS af-south-1)
+- Onboard first pilot SME (growing business, 10-50 employees)
+- Start GRA registration process
+- Sprint 2: Keycloak auth, PAYE with payroll model, invoice persistence, Kafka events
+
+---
+
 ## End-of-Session Closeout Prompt
 
 Use this prompt at the end of every implementation session and append the result here.
