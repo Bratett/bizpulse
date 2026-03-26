@@ -7,8 +7,6 @@ All monetary values are in pesewas (1 GHS = 100 pesewas).
 from datetime import date, datetime
 from unittest.mock import patch
 
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # Fixtures — mock data simulating query results from the transactions table

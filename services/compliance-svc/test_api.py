@@ -4,12 +4,10 @@ Tests use mocked database and auth to verify endpoint behavior
 without requiring a running PostgreSQL instance.
 """
 
-import json
-from datetime import date, datetime
+from datetime import date
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-import pytest
 from fastapi.testclient import TestClient
 
 from main import app

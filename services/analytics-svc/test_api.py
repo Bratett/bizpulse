@@ -5,7 +5,6 @@ All monetary values are in pesewas (integers).
 """
 
 import time
-from datetime import date, datetime
 from unittest.mock import patch, MagicMock
 
 import pytest
