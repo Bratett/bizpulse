@@ -5,7 +5,26 @@ from config import settings
 
 
 def get_current_user(request: Request) -> dict:
-    """Extract and validate JWT from Authorization header or cookie."""
+    """Dual-mode auth: Kong-forwarded headers OR legacy HS256 JWT.
+
+    Mode 1 (Kong path): If X-User-Id header is present, Kong has already
+    validated the JWT via its JWT plugin. Trust the forwarded headers.
+
+    Mode 2 (Legacy path): If no Kong headers, fall back to HS256 JWT
+    validation using the shared secret.
+
+    This dual-mode approach allows gradual migration to Keycloak/Kong (ADR-0017).
+    """
+    # Kong-forwarded path: headers already verified by Kong JWT plugin
+    user_id = request.headers.get("X-User-Id")
+    if user_id:
+        return {
+            "user_id": user_id,
+            "business_id": request.headers.get("X-Business-Id"),
+            "role": request.headers.get("X-Roles", ""),
+        }
+
+    # Legacy HS256 JWT path
     token = None
 
     auth_header = request.headers.get("Authorization", "")
