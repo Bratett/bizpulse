@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
 
 jobs:
   transaction-svc:
@@ -46,6 +46,30 @@ jobs:
         run: ruff check .
       - name: Test
         working-directory: services/analytics-svc
+        run: pytest -v --tb=short
+
+  compliance-svc:
+    name: Compliance Service (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpango-1.0-0 libcairo2 libgdk-pixbuf-2.0-0 libffi-dev
+      - name: Install dependencies
+        working-directory: services/compliance-svc
+        run: |
+          pip install -r requirements.txt
+          pip install ruff
+      - name: Lint
+        working-directory: services/compliance-svc
+        run: ruff check .
+      - name: Test
+        working-directory: services/compliance-svc
         run: pytest -v --tb=short
 
   web:
