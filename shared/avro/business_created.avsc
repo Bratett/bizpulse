@@ -1,0 +1,18 @@
+{
+  "type": "record",
+  "name": "BusinessCreated",
+  "namespace": "ai.bizpulse.events",
+  "doc": "Emitted when a new business entity is created.",
+  "fields": [
+    {"name": "event_id", "type": "string", "doc": "Unique event identifier (UUID)"},
+    {"name": "business_id", "type": "string", "doc": "Business UUID"},
+    {"name": "legal_name", "type": "string", "doc": "Business legal name"},
+    {"name": "trading_name", "type": ["null", "string"], "default": null},
+    {"name": "tax_identification_number", "type": ["null", "string"], "default": null, "doc": "GRA TIN"},
+    {"name": "industry_sector", "type": ["null", "string"], "default": null},
+    {"name": "base_currency", "type": "string", "default": "GHS"},
+    {"name": "country_code", "type": "string", "default": "GH"},
+    {"name": "created_by", "type": "string", "doc": "User UUID of the creator"},
+    {"name": "created_at", "type": "string", "doc": "ISO 8601 timestamp (UTC)"}
+  ]
+}

@@ -26,6 +26,28 @@ jobs:
         working-directory: services/transaction-svc
         run: go build -o /dev/null .
 
+  user-svc:
+    name: User Service (Go)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - name: Tidy modules
+        working-directory: services/user-svc
+        run: go mod tidy
+      - name: Lint
+        working-directory: services/user-svc
+        run: |
+          go vet ./...
+      - name: Test
+        working-directory: services/user-svc
+        run: go test -v -race -coverprofile=coverage.out ./...
+      - name: Build
+        working-directory: services/user-svc
+        run: go build -o /dev/null .
+
   analytics-svc:
     name: Analytics Service (Python)
     runs-on: ubuntu-latest
@@ -69,6 +91,31 @@ jobs:
       - name: Test
         working-directory: services/compliance-svc
         run: pytest -v --tb=short
+
+  avro-schemas:
+    name: Avro Schema Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install fastavro
+        run: pip install fastavro
+      - name: Validate Avro schemas
+        run: |
+          python -c "
+          import fastavro, json, sys, glob
+          schemas = glob.glob('shared/avro/*.avsc')
+          if not schemas:
+            print('No Avro schemas found'); sys.exit(1)
+          for path in schemas:
+            with open(path) as f:
+              schema = json.load(f)
+            fastavro.parse_schema(schema)
+            print(f'  OK: {path}')
+          print(f'All {len(schemas)} schemas valid.')
+          "
 
   web:
     name: Web Frontend (Next.js)

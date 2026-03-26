@@ -1,0 +1,111 @@
+_format_version: "3.0"
+
+services:
+  # Transaction Service
+  - name: transaction-svc
+    url: http://transaction-svc:8080
+    routes:
+      - name: transaction-routes
+        paths:
+          - /v1/transactions
+          - /v1/accounts
+        strip_path: false
+      - name: transaction-health
+        paths:
+          - /v1/health
+        strip_path: false
+        plugins:
+          - name: request-termination
+            config:
+              status_code: 200
+              message: "healthy"
+
+  # Analytics Service
+  - name: analytics-svc
+    url: http://analytics-svc:8081
+    routes:
+      - name: analytics-routes
+        paths:
+          - /reports
+        strip_path: false
+
+  # Compliance Service
+  - name: compliance-svc
+    url: http://compliance-svc:8082
+    routes:
+      - name: compliance-tax-routes
+        paths:
+          - /tax
+        strip_path: false
+      - name: compliance-invoice-routes
+        paths:
+          - /invoices
+        strip_path: false
+      - name: compliance-employee-routes
+        paths:
+          - /employees
+        strip_path: false
+      - name: compliance-payroll-routes
+        paths:
+          - /payroll
+        strip_path: false
+
+  # User Service (Sprint 2 — will be built in S2.3)
+  - name: user-svc
+    url: http://user-svc:8083
+    routes:
+      - name: auth-routes
+        paths:
+          - /v1/auth
+        strip_path: false
+      - name: user-routes
+        paths:
+          - /v1/users
+        strip_path: false
+      - name: business-routes
+        paths:
+          - /v1/businesses
+        strip_path: false
+
+# Global plugins
+plugins:
+  # CORS — allow web frontend
+  - name: cors
+    config:
+      origins:
+        - http://localhost:3000
+      methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      headers:
+        - Content-Type
+        - Authorization
+        - X-Request-Id
+      credentials: true
+      max_age: 3600
+
+  # JWT validation — Keycloak RS256
+  # Note: Keycloak JWKS endpoint provides public keys for token verification.
+  # This plugin validates tokens on all routes except those explicitly exempted.
+  - name: jwt
+    config:
+      uri_param_names:
+        - jwt
+      header_names:
+        - Authorization
+      claims_to_verify:
+        - exp
+      key_claim_name: iss
+      run_on_preflight: false
+
+# Consumers — Keycloak issuer
+consumers:
+  - username: keycloak
+    jwt_secrets:
+      - key: http://localhost:8180/realms/bizpulse
+        algorithm: RS256
+        rsa_public_key: "-----BEGIN PUBLIC KEY-----\nREPLACE_WITH_KEYCLOAK_PUBLIC_KEY_ON_FIRST_RUN\n-----END PUBLIC KEY-----"

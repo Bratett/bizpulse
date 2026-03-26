@@ -1,0 +1,15 @@
+{
+  "type": "record",
+  "name": "UserRegistered",
+  "namespace": "ai.bizpulse.events",
+  "doc": "Emitted when a new user registers on the platform.",
+  "fields": [
+    {"name": "event_id", "type": "string", "doc": "Unique event identifier (UUID)"},
+    {"name": "user_id", "type": "string", "doc": "User UUID"},
+    {"name": "business_id", "type": "string", "doc": "Business UUID created during registration"},
+    {"name": "email", "type": "string", "doc": "User email address"},
+    {"name": "role", "type": "string", "doc": "Initial role assigned (e.g., owner)"},
+    {"name": "source_channel", "type": {"type": "enum", "name": "SourceChannel", "symbols": ["WEB", "MOBILE", "USSD", "ASSISTED"]}},
+    {"name": "registered_at", "type": "string", "doc": "ISO 8601 timestamp (UTC)"}
+  ]
+}

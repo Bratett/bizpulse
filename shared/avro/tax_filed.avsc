@@ -1,0 +1,16 @@
+{
+  "type": "record",
+  "name": "TaxFiled",
+  "namespace": "ai.bizpulse.events",
+  "doc": "Emitted when a tax period is marked as filed with GRA.",
+  "fields": [
+    {"name": "event_id", "type": "string", "doc": "Unique event identifier (UUID)"},
+    {"name": "tax_period_id", "type": "string", "doc": "Tax period UUID"},
+    {"name": "business_id", "type": "string", "doc": "Owning business UUID"},
+    {"name": "period_type", "type": {"type": "enum", "name": "PeriodType", "symbols": ["VAT_MONTHLY", "CIT_ANNUAL", "WHT_MONTHLY"]}},
+    {"name": "filing_reference", "type": ["null", "string"], "default": null, "doc": "GRA filing reference number"},
+    {"name": "filing_method", "type": {"type": "enum", "name": "FilingMethod", "symbols": ["MANUAL", "PORTAL", "API"]}},
+    {"name": "filed_by", "type": "string", "doc": "User UUID who filed"},
+    {"name": "filed_at", "type": "string", "doc": "ISO 8601 timestamp (UTC)"}
+  ]
+}

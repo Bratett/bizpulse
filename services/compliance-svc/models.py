@@ -99,6 +99,66 @@ class CITReportResponse(BaseModel):
     computation_date: Optional[datetime] = None
 
 
+class EmployeeStatus(str, Enum):
+    ACTIVE = "active"
+    TERMINATED = "terminated"
+    ON_LEAVE = "on_leave"
+
+
+class PayrollRecordStatus(str, Enum):
+    DRAFT = "DRAFT"
+    COMPUTED = "COMPUTED"
+    APPROVED = "APPROVED"
+    PAID = "PAID"
+
+
+class CreateEmployeeRequest(BaseModel):
+    first_name: str
+    last_name: str
+    employee_number: Optional[str] = None
+    tin: Optional[str] = None
+    ssnit_number: Optional[str] = None
+    hire_date: date
+
+
+class UpdateEmployeeRequest(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    tin: Optional[str] = None
+    ssnit_number: Optional[str] = None
+    status: Optional[EmployeeStatus] = None
+
+
+class EmployeeResponse(BaseModel):
+    id: str
+    business_id: str
+    employee_number: Optional[str] = None
+    first_name: str
+    last_name: str
+    tin: Optional[str] = None
+    ssnit_number: Optional[str] = None
+    status: str
+    hire_date: date
+
+
+class ComputePayrollRequest(BaseModel):
+    period_year: int
+    period_month: int = Field(..., ge=1, le=12)
+
+
+class PayrollRecordResponse(BaseModel):
+    id: str
+    employee_id: str
+    employee_name: str
+    period_year: int
+    period_month: int
+    gross_salary_pesewas: int
+    ssnit_employee_pesewas: int
+    paye_pesewas: int
+    net_salary_pesewas: int
+    status: str
+
+
 class InvoiceLineItem(BaseModel):
     description: str
     quantity: float = 1.0
@@ -111,3 +171,39 @@ class InvoicePreviewRequest(BaseModel):
     customer_tin: Optional[str] = None
     line_items: list[InvoiceLineItem] = Field(..., min_length=1)
     notes: Optional[str] = None
+
+
+class InvoiceStatus(str, Enum):
+    DRAFT = "DRAFT"
+    SENT = "SENT"
+    PAID = "PAID"
+    CANCELLED = "CANCELLED"
+
+
+class CreateInvoiceRequest(BaseModel):
+    customer_name: str
+    customer_tin: Optional[str] = None
+    line_items: list[InvoiceLineItem] = Field(..., min_length=1)
+    notes: Optional[str] = None
+
+
+class UpdateInvoiceRequest(BaseModel):
+    status: Optional[InvoiceStatus] = None
+    notes: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_tin: Optional[str] = None
+
+
+class InvoiceResponse(BaseModel):
+    id: str
+    business_id: str
+    invoice_number: Optional[str] = None
+    customer_name: str
+    customer_tin: Optional[str] = None
+    line_items: list[dict]
+    subtotal_pesewas: int
+    vat_pesewas: int
+    total_pesewas: int
+    notes: Optional[str] = None
+    status: str
+    created_at: datetime
