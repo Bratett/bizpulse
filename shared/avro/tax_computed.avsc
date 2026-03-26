@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "TaxComputed",
+  "namespace": "ai.bizpulse.events",
+  "doc": "Emitted when taxes are computed for a tax period.",
+  "fields": [
+    {"name": "event_id", "type": "string", "doc": "Unique event identifier (UUID)"},
+    {"name": "tax_period_id", "type": "string", "doc": "Tax period UUID"},
+    {"name": "business_id", "type": "string", "doc": "Owning business UUID"},
+    {"name": "period_type", "type": {"type": "enum", "name": "PeriodType", "symbols": ["VAT_MONTHLY", "CIT_ANNUAL", "WHT_MONTHLY"]}},
+    {"name": "start_date", "type": "string", "doc": "Period start (YYYY-MM-DD)"},
+    {"name": "end_date", "type": "string", "doc": "Period end (YYYY-MM-DD)"},
+    {"name": "total_liability_pesewas", "type": "long", "doc": "Total tax liability in pesewas"},
+    {"name": "computed_by", "type": "string", "doc": "User UUID who triggered computation"},
+    {"name": "computed_at", "type": "string", "doc": "ISO 8601 timestamp (UTC)"}
+  ]
+}

@@ -240,6 +240,56 @@ def compute_wht(
     }
 
 
+def compute_paye(gross_salary_pesewas: int, rates: list[dict], as_of: date) -> dict:
+    """Compute PAYE using Ghana progressive tax bands.
+
+    Walks through PAYE bands in order (PAYE_BAND_1 through PAYE_BAND_6).
+    Each band has a ceiling (band_ceiling_pesewas) and a rate (percentage_basis_points).
+    Band 6 has no ceiling (remainder taxed at top rate).
+    """
+    paye_rates = sorted(
+        find_rates_by_type(rates, "PAYE", as_of),
+        key=lambda r: r["rate_code"],
+    )
+
+    if not paye_rates:
+        return {
+            "gross_salary_pesewas": gross_salary_pesewas,
+            "total_paye_pesewas": 0,
+            "band_details": [],
+            "error": "No effective PAYE rates found",
+        }
+
+    remaining = gross_salary_pesewas
+    total_paye = 0
+    band_details = []
+
+    for rate in paye_rates:
+        if remaining <= 0:
+            break
+        ceiling = rate.get("band_ceiling_pesewas")
+        taxable_in_band = min(remaining, ceiling) if ceiling else remaining
+        paye_for_band = apply_rate_bps(taxable_in_band, rate["percentage_basis_points"])
+
+        band_details.append({
+            "rate_code": rate["rate_code"],
+            "ceiling_pesewas": ceiling,
+            "taxable_amount_pesewas": taxable_in_band,
+            "rate_bps": rate["percentage_basis_points"],
+            "paye_pesewas": paye_for_band,
+        })
+
+        total_paye += paye_for_band
+        remaining -= taxable_in_band
+
+    return {
+        "gross_salary_pesewas": gross_salary_pesewas,
+        "total_paye_pesewas": total_paye,
+        "effective_rate_bps": (total_paye * 10000) // gross_salary_pesewas if gross_salary_pesewas > 0 else 0,
+        "band_details": band_details,
+    }
+
+
 def compute_all_taxes(
     transactions: list[dict],
     rates: list[dict],

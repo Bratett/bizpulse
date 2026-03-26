@@ -354,3 +354,174 @@ export async function generateInvoicePreview(data: {
   }
   return res.blob();
 }
+
+// ---------------------------------------------------------------------------
+// Kong Gateway URL (for future gateway-routed calls)
+// ---------------------------------------------------------------------------
+
+export const KONG_URL =
+  process.env.NEXT_PUBLIC_KONG_URL || "http://localhost:8000";
+
+// ---------------------------------------------------------------------------
+// Invoice CRUD
+// ---------------------------------------------------------------------------
+
+export interface Invoice {
+  id: string;
+  business_id: string;
+  invoice_number: string | null;
+  customer_name: string;
+  customer_tin: string | null;
+  line_items: InvoiceLineItem[];
+  subtotal_pesewas: number;
+  vat_pesewas: number;
+  total_pesewas: number;
+  notes: string | null;
+  status: "DRAFT" | "SENT" | "PAID" | "CANCELLED";
+  created_at: string;
+}
+
+export async function createInvoice(data: {
+  customer_name: string;
+  customer_tin?: string;
+  line_items: InvoiceLineItem[];
+  notes?: string;
+}): Promise<Invoice> {
+  return request<Invoice>(COMPLIANCE_URL, "/invoices", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listInvoices(status?: string): Promise<Invoice[]> {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  const qs = params.toString();
+  return request<Invoice[]>(
+    COMPLIANCE_URL,
+    `/invoices${qs ? `?${qs}` : ""}`
+  );
+}
+
+export async function getInvoice(id: string): Promise<Invoice> {
+  return request<Invoice>(COMPLIANCE_URL, `/invoices/${id}`);
+}
+
+export async function updateInvoice(
+  id: string,
+  data: {
+    status?: string;
+    notes?: string;
+    customer_name?: string;
+    customer_tin?: string;
+  }
+): Promise<Invoice> {
+  return request<Invoice>(COMPLIANCE_URL, `/invoices/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getInvoicePdf(id: string): Promise<Blob> {
+  const res = await fetch(`${COMPLIANCE_URL}/invoices/${id}/pdf`, {
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(
+      res.status,
+      body?.error?.code || "UNKNOWN",
+      body?.error?.message || "Failed to generate invoice PDF"
+    );
+  }
+  return res.blob();
+}
+
+// ---------------------------------------------------------------------------
+// Payroll API
+// ---------------------------------------------------------------------------
+
+export interface Employee {
+  id: string;
+  business_id: string;
+  employee_number: string | null;
+  first_name: string;
+  last_name: string;
+  tin: string | null;
+  ssnit_number: string | null;
+  status: string;
+  hire_date: string;
+}
+
+export interface PayrollRecord {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  period_year: number;
+  period_month: number;
+  gross_salary_pesewas: number;
+  ssnit_employee_pesewas: number;
+  paye_pesewas: number;
+  net_salary_pesewas: number;
+  status: string;
+}
+
+export async function listEmployees(status?: string): Promise<Employee[]> {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  const qs = params.toString();
+  return request<Employee[]>(
+    COMPLIANCE_URL,
+    `/employees${qs ? `?${qs}` : ""}`
+  );
+}
+
+export async function createEmployee(data: {
+  first_name: string;
+  last_name: string;
+  employee_number?: string;
+  tin?: string;
+  ssnit_number?: string;
+  hire_date: string;
+}): Promise<Employee> {
+  return request<Employee>(COMPLIANCE_URL, "/employees", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function computePayroll(
+  year: number,
+  month: number
+): Promise<{
+  period_year: number;
+  period_month: number;
+  employees_computed: number;
+  records: Array<{
+    employee_id: string;
+    employee_name: string;
+    gross_salary_pesewas: number;
+    ssnit_employee_pesewas: number;
+    paye_pesewas: number;
+    net_salary_pesewas: number;
+  }>;
+}> {
+  return request(COMPLIANCE_URL, "/payroll/compute", {
+    method: "POST",
+    body: JSON.stringify({ period_year: year, period_month: month }),
+  });
+}
+
+export async function listPayrollRecords(
+  year?: number,
+  month?: number
+): Promise<PayrollRecord[]> {
+  const params = new URLSearchParams();
+  if (year !== undefined) params.set("period_year", String(year));
+  if (month !== undefined) params.set("period_month", String(month));
+  const qs = params.toString();
+  return request<PayrollRecord[]>(
+    COMPLIANCE_URL,
+    `/payroll/records${qs ? `?${qs}` : ""}`
+  );
+}

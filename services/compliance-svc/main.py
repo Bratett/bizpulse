@@ -22,20 +22,30 @@ from database import (
     query_single,
     release_connection,
 )
+from fastapi.responses import Response
 from models import (
     CITReportResponse,
+    ComputePayrollRequest,
+    CreateEmployeeRequest,
+    CreateInvoiceRequest,
     CreateTaxPeriodRequest,
+    EmployeeResponse,
+    InvoiceResponse,
     MarkFiledRequest,
+    PayrollRecordResponse,
     PeriodStatus,
     TaxCategory,
     TaxPeriodResponse,
     TaxSummaryResponse,
+    UpdateEmployeeRequest,
+    UpdateInvoiceRequest,
     VATReportResponse,
 )
 from tax_engine import (
     compute_all_taxes,
     compute_cit,
     compute_nhil_getfund,
+    compute_paye,
     compute_vat,
 )
 
@@ -672,6 +682,686 @@ async def update_tax_metadata(
     ])
 
     return {"transaction_id": transaction_id, "tax_category": tax_category}
+
+
+# ---------------------------------------------------------------------------
+# 11. POST /employees — create employee
+# ---------------------------------------------------------------------------
+
+@app.post("/employees", response_model=EmployeeResponse, status_code=201)
+async def create_employee(
+    body: CreateEmployeeRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Create a new employee for the authenticated business."""
+    business_id = user["business_id"]
+    user_id = user["user_id"]
+    employee_id = _new_id()
+    now = _now_utc()
+
+    execute_in_transaction([
+        (
+            """
+            INSERT INTO employees
+                (id, business_id, employee_number, first_name, last_name,
+                 tin, ssnit_number, hire_date, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                employee_id, business_id, body.employee_number,
+                body.first_name, body.last_name, body.tin,
+                body.ssnit_number, body.hire_date, now, now,
+            ),
+        ),
+        (
+            """
+            INSERT INTO audit_log (id, business_id, user_id, action, entity_type, entity_id, details, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                _new_id(), business_id, user_id, "EMPLOYEE_CREATED",
+                "employee", employee_id,
+                json.dumps({"first_name": body.first_name, "last_name": body.last_name}),
+                now,
+            ),
+        ),
+    ])
+
+    row = query_single(
+        "SELECT * FROM employees WHERE id = %s AND business_id = %s",
+        (employee_id, business_id),
+    )
+    return EmployeeResponse(**row)
+
+
+# ---------------------------------------------------------------------------
+# 12. GET /employees — list employees
+# ---------------------------------------------------------------------------
+
+@app.get("/employees", response_model=list[EmployeeResponse])
+async def list_employees(
+    status: str | None = Query(default=None, description="Filter by status (active, terminated, on_leave)"),
+    user: dict = Depends(get_current_user),
+):
+    """List employees for the authenticated business."""
+    business_id = user["business_id"]
+
+    sql = "SELECT * FROM employees WHERE business_id = %s"
+    params: list = [business_id]
+
+    if status:
+        sql += " AND status = %s"
+        params.append(status)
+
+    sql += " ORDER BY last_name, first_name"
+
+    rows = query(sql, tuple(params))
+    return [EmployeeResponse(**r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# 13. GET /employees/{employee_id} — get employee detail
+# ---------------------------------------------------------------------------
+
+@app.get("/employees/{employee_id}", response_model=EmployeeResponse)
+async def get_employee(employee_id: str, user: dict = Depends(get_current_user)):
+    """Get a single employee by ID."""
+    business_id = user["business_id"]
+
+    row = query_single(
+        "SELECT * FROM employees WHERE id = %s AND business_id = %s",
+        (employee_id, business_id),
+    )
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "NOT_FOUND", "message": "Employee not found"}},
+        )
+
+    return EmployeeResponse(**row)
+
+
+# ---------------------------------------------------------------------------
+# 14. PATCH /employees/{employee_id} — update employee
+# ---------------------------------------------------------------------------
+
+@app.patch("/employees/{employee_id}", response_model=EmployeeResponse)
+async def update_employee(
+    employee_id: str,
+    body: UpdateEmployeeRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Update an employee's details."""
+    business_id = user["business_id"]
+    user_id = user["user_id"]
+
+    existing = query_single(
+        "SELECT * FROM employees WHERE id = %s AND business_id = %s",
+        (employee_id, business_id),
+    )
+    if not existing:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "NOT_FOUND", "message": "Employee not found"}},
+        )
+
+    # Build dynamic SET clause from provided fields
+    updates = {}
+    if body.first_name is not None:
+        updates["first_name"] = body.first_name
+    if body.last_name is not None:
+        updates["last_name"] = body.last_name
+    if body.tin is not None:
+        updates["tin"] = body.tin
+    if body.ssnit_number is not None:
+        updates["ssnit_number"] = body.ssnit_number
+    if body.status is not None:
+        updates["status"] = body.status.value
+
+    if not updates:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": {"code": "NO_UPDATES", "message": "No fields to update"}},
+        )
+
+    now = _now_utc()
+    updates["updated_at"] = now
+
+    set_clause = ", ".join(f"{k} = %s" for k in updates)
+    values = list(updates.values())
+    values.extend([employee_id, business_id])
+
+    execute_in_transaction([
+        (
+            f"UPDATE employees SET {set_clause} WHERE id = %s AND business_id = %s",
+            tuple(values),
+        ),
+        (
+            """
+            INSERT INTO audit_log (id, business_id, user_id, action, entity_type, entity_id, details, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                _new_id(), business_id, user_id, "EMPLOYEE_UPDATED",
+                "employee", employee_id,
+                json.dumps({"updated_fields": list(updates.keys())}),
+                now,
+            ),
+        ),
+    ])
+
+    row = query_single(
+        "SELECT * FROM employees WHERE id = %s AND business_id = %s",
+        (employee_id, business_id),
+    )
+    return EmployeeResponse(**row)
+
+
+# ---------------------------------------------------------------------------
+# 15. POST /payroll/compute — compute PAYE for all active employees
+# ---------------------------------------------------------------------------
+
+@app.post("/payroll/compute")
+async def compute_payroll(
+    body: ComputePayrollRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Compute PAYE for all active employees for a given month.
+
+    For each active employee: look up their latest payroll record gross salary
+    (or existing DRAFT record for the requested period), compute PAYE using
+    progressive bands, and upsert the payroll_records row.
+    All writes in a single transaction.
+    """
+    business_id = user["business_id"]
+    user_id = user["user_id"]
+
+    conn = get_connection()
+    try:
+        conn.autocommit = False
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Fetch active employees
+            cur.execute(
+                "SELECT * FROM employees WHERE business_id = %s AND status = 'active'",
+                (business_id,),
+            )
+            employees = [dict(row) for row in cur.fetchall()]
+
+            if not employees:
+                conn.rollback()
+                raise HTTPException(
+                    status_code=400,
+                    detail={"error": {"code": "NO_EMPLOYEES", "message": "No active employees found"}},
+                )
+
+            # Fetch compliance rates
+            cur.execute("SELECT * FROM compliance_rates")
+            rates = [dict(row) for row in cur.fetchall()]
+
+            as_of = date(body.period_year, body.period_month, 1)
+            now = _now_utc()
+            results = []
+
+            for emp in employees:
+                emp_id = str(emp["id"])
+
+                # Look for existing payroll record (DRAFT) for this period
+                cur.execute(
+                    """
+                    SELECT * FROM payroll_records
+                    WHERE employee_id = %s AND period_year = %s AND period_month = %s
+                    """,
+                    (emp_id, body.period_year, body.period_month),
+                )
+                existing_record = cur.fetchone()
+
+                if existing_record:
+                    existing_record = dict(existing_record)
+                    gross_salary = existing_record["gross_salary_pesewas"]
+                else:
+                    # Look for previous month's payroll to carry forward salary
+                    cur.execute(
+                        """
+                        SELECT gross_salary_pesewas FROM payroll_records
+                        WHERE employee_id = %s AND status IN ('COMPUTED', 'APPROVED', 'PAID')
+                        ORDER BY period_year DESC, period_month DESC
+                        LIMIT 1
+                        """,
+                        (emp_id,),
+                    )
+                    prev = cur.fetchone()
+                    gross_salary = dict(prev)["gross_salary_pesewas"] if prev else 0
+
+                if gross_salary <= 0:
+                    # Skip employees with no salary data
+                    continue
+
+                # Compute PAYE
+                paye_result = compute_paye(gross_salary, rates, as_of)
+
+                # SSNIT employee contribution: 5.5% (550 bps) of gross salary
+                ssnit_employee = (gross_salary * 550) // 10000
+
+                # Net salary = gross - SSNIT employee - PAYE
+                net_salary = gross_salary - ssnit_employee - paye_result["total_paye_pesewas"]
+
+                computation_details = json.dumps({
+                    "paye": paye_result,
+                    "ssnit_rate_bps": 550,
+                })
+
+                if existing_record:
+                    # Update existing record
+                    record_id = str(existing_record["id"])
+                    cur.execute(
+                        """
+                        UPDATE payroll_records
+                        SET ssnit_employee_pesewas = %s,
+                            paye_pesewas = %s,
+                            net_salary_pesewas = %s,
+                            computation_details = %s,
+                            status = 'COMPUTED',
+                            computed_at = %s,
+                            updated_at = %s
+                        WHERE id = %s
+                        """,
+                        (
+                            ssnit_employee, paye_result["total_paye_pesewas"],
+                            net_salary, computation_details, now, now, record_id,
+                        ),
+                    )
+                else:
+                    # Insert new record
+                    record_id = _new_id()
+                    cur.execute(
+                        """
+                        INSERT INTO payroll_records
+                            (id, business_id, employee_id, period_year, period_month,
+                             gross_salary_pesewas, ssnit_employee_pesewas, paye_pesewas,
+                             net_salary_pesewas, computation_details, status, computed_at,
+                             created_at, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'COMPUTED', %s, %s, %s)
+                        """,
+                        (
+                            record_id, business_id, emp_id,
+                            body.period_year, body.period_month,
+                            gross_salary, ssnit_employee,
+                            paye_result["total_paye_pesewas"], net_salary,
+                            computation_details, now, now, now,
+                        ),
+                    )
+
+                results.append({
+                    "employee_id": emp_id,
+                    "employee_name": f"{emp['first_name']} {emp['last_name']}",
+                    "gross_salary_pesewas": gross_salary,
+                    "ssnit_employee_pesewas": ssnit_employee,
+                    "paye_pesewas": paye_result["total_paye_pesewas"],
+                    "net_salary_pesewas": net_salary,
+                })
+
+            # Audit log
+            cur.execute(
+                """
+                INSERT INTO audit_log (id, business_id, user_id, action, entity_type, entity_id, details, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    _new_id(), business_id, user_id, "PAYROLL_COMPUTED",
+                    "payroll", business_id,
+                    json.dumps({
+                        "period_year": body.period_year,
+                        "period_month": body.period_month,
+                        "employee_count": len(results),
+                    }),
+                    now,
+                ),
+            )
+
+            conn.commit()
+
+    except HTTPException:
+        raise
+    except Exception:
+        conn.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail={"error": {"code": "INTERNAL_ERROR", "message": "Failed to compute payroll"}},
+        )
+    finally:
+        conn.autocommit = True
+        release_connection(conn)
+
+    return {
+        "period_year": body.period_year,
+        "period_month": body.period_month,
+        "employees_computed": len(results),
+        "records": results,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 16. GET /payroll/records — list payroll records
+# ---------------------------------------------------------------------------
+
+@app.get("/payroll/records", response_model=list[PayrollRecordResponse])
+async def list_payroll_records(
+    period_year: int | None = Query(default=None, description="Filter by year"),
+    period_month: int | None = Query(default=None, description="Filter by month (1-12)"),
+    user: dict = Depends(get_current_user),
+):
+    """List payroll records for the authenticated business."""
+    business_id = user["business_id"]
+
+    sql = """
+        SELECT pr.*, e.first_name, e.last_name
+        FROM payroll_records pr
+        JOIN employees e ON pr.employee_id = e.id
+        WHERE pr.business_id = %s
+    """
+    params: list = [business_id]
+
+    if period_year is not None:
+        sql += " AND pr.period_year = %s"
+        params.append(period_year)
+
+    if period_month is not None:
+        sql += " AND pr.period_month = %s"
+        params.append(period_month)
+
+    sql += " ORDER BY pr.period_year DESC, pr.period_month DESC, e.last_name, e.first_name"
+
+    rows = query(sql, tuple(params))
+    return [
+        PayrollRecordResponse(
+            id=str(r["id"]),
+            employee_id=str(r["employee_id"]),
+            employee_name=f"{r['first_name']} {r['last_name']}",
+            period_year=r["period_year"],
+            period_month=r["period_month"],
+            gross_salary_pesewas=r["gross_salary_pesewas"],
+            ssnit_employee_pesewas=r["ssnit_employee_pesewas"],
+            paye_pesewas=r["paye_pesewas"],
+            net_salary_pesewas=r["net_salary_pesewas"],
+            status=r["status"],
+        )
+        for r in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
+# 17. POST /invoices — create invoice
+# ---------------------------------------------------------------------------
+
+@app.post("/invoices", response_model=InvoiceResponse, status_code=201)
+async def create_invoice(
+    body: CreateInvoiceRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Create and persist an invoice.
+
+    Line items are stored as JSONB. Subtotal, VAT, and total are computed
+    server-side from line_items and the current VAT rate.
+    """
+    business_id = user["business_id"]
+    user_id = user["user_id"]
+    invoice_id = _new_id()
+    now = _now_utc()
+
+    # Fetch current VAT rate for computation
+    rates = _fetch_rates()
+    vat_rate_bps = 1500  # default 15%
+    today = date.today()
+    for r in rates:
+        if r.get("rate_code") == "VAT_STANDARD":
+            eff_from = r.get("effective_from")
+            eff_to = r.get("effective_to")
+            if eff_from and eff_from <= today and (eff_to is None or eff_to >= today):
+                vat_rate_bps = r["percentage_basis_points"]
+                break
+
+    # Compute totals from line items
+    subtotal_pesewas = 0
+    total_vat_pesewas = 0
+    serialized_items = []
+    for item in body.line_items:
+        line_sub = int(item.quantity * item.unit_price_pesewas)
+        line_vat = int(round(line_sub * vat_rate_bps / 10_000)) if item.vat_applicable else 0
+        subtotal_pesewas += line_sub
+        total_vat_pesewas += line_vat
+        serialized_items.append({
+            "description": item.description,
+            "quantity": item.quantity,
+            "unit_price_pesewas": item.unit_price_pesewas,
+            "vat_applicable": item.vat_applicable,
+        })
+
+    total_pesewas = subtotal_pesewas + total_vat_pesewas
+
+    execute_in_transaction([
+        (
+            """
+            INSERT INTO invoices
+                (id, business_id, customer_name, customer_tin, line_items,
+                 subtotal_pesewas, vat_pesewas, total_pesewas, notes,
+                 status, created_by, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'DRAFT', %s, %s, %s)
+            """,
+            (
+                invoice_id, business_id, body.customer_name,
+                body.customer_tin, json.dumps(serialized_items),
+                subtotal_pesewas, total_vat_pesewas, total_pesewas,
+                body.notes, user_id, now, now,
+            ),
+        ),
+        (
+            """
+            INSERT INTO audit_log (id, business_id, user_id, action, entity_type, entity_id, details, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                _new_id(), business_id, user_id, "INVOICE_CREATED",
+                "invoice", invoice_id,
+                json.dumps({"customer_name": body.customer_name, "total_pesewas": total_pesewas}),
+                now,
+            ),
+        ),
+    ])
+
+    row = query_single(
+        "SELECT * FROM invoices WHERE id = %s AND business_id = %s",
+        (invoice_id, business_id),
+    )
+    row["line_items"] = json.loads(row["line_items"]) if isinstance(row["line_items"], str) else row["line_items"]
+    return InvoiceResponse(**row)
+
+
+# ---------------------------------------------------------------------------
+# 18. GET /invoices — list invoices
+# ---------------------------------------------------------------------------
+
+@app.get("/invoices", response_model=list[InvoiceResponse])
+async def list_invoices(
+    status: str | None = Query(default=None, description="Filter by status (DRAFT, SENT, PAID, CANCELLED)"),
+    user: dict = Depends(get_current_user),
+):
+    """List invoices for the authenticated business."""
+    business_id = user["business_id"]
+
+    sql = "SELECT * FROM invoices WHERE business_id = %s"
+    params: list = [business_id]
+
+    if status:
+        sql += " AND status = %s"
+        params.append(status)
+
+    sql += " ORDER BY created_at DESC"
+
+    rows = query(sql, tuple(params))
+    results = []
+    for r in rows:
+        r["line_items"] = json.loads(r["line_items"]) if isinstance(r["line_items"], str) else r["line_items"]
+        results.append(InvoiceResponse(**r))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# 19. GET /invoices/{invoice_id} — get invoice detail
+# ---------------------------------------------------------------------------
+
+@app.get("/invoices/{invoice_id}", response_model=InvoiceResponse)
+async def get_invoice(invoice_id: str, user: dict = Depends(get_current_user)):
+    """Get a single invoice by ID."""
+    business_id = user["business_id"]
+
+    row = query_single(
+        "SELECT * FROM invoices WHERE id = %s AND business_id = %s",
+        (invoice_id, business_id),
+    )
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "NOT_FOUND", "message": "Invoice not found"}},
+        )
+
+    row["line_items"] = json.loads(row["line_items"]) if isinstance(row["line_items"], str) else row["line_items"]
+    return InvoiceResponse(**row)
+
+
+# ---------------------------------------------------------------------------
+# 20. PATCH /invoices/{invoice_id} — update invoice
+# ---------------------------------------------------------------------------
+
+@app.patch("/invoices/{invoice_id}", response_model=InvoiceResponse)
+async def update_invoice(
+    invoice_id: str,
+    body: UpdateInvoiceRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Update an invoice (status changes, customer info, notes)."""
+    business_id = user["business_id"]
+    user_id = user["user_id"]
+
+    existing = query_single(
+        "SELECT * FROM invoices WHERE id = %s AND business_id = %s",
+        (invoice_id, business_id),
+    )
+    if not existing:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "NOT_FOUND", "message": "Invoice not found"}},
+        )
+
+    updates = {}
+    if body.status is not None:
+        updates["status"] = body.status.value
+    if body.notes is not None:
+        updates["notes"] = body.notes
+    if body.customer_name is not None:
+        updates["customer_name"] = body.customer_name
+    if body.customer_tin is not None:
+        updates["customer_tin"] = body.customer_tin
+
+    if not updates:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": {"code": "NO_UPDATES", "message": "No fields to update"}},
+        )
+
+    now = _now_utc()
+    updates["updated_at"] = now
+
+    set_clause = ", ".join(f"{k} = %s" for k in updates)
+    values = list(updates.values())
+    values.extend([invoice_id, business_id])
+
+    execute_in_transaction([
+        (
+            f"UPDATE invoices SET {set_clause} WHERE id = %s AND business_id = %s",
+            tuple(values),
+        ),
+        (
+            """
+            INSERT INTO audit_log (id, business_id, user_id, action, entity_type, entity_id, details, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                _new_id(), business_id, user_id, "INVOICE_UPDATED",
+                "invoice", invoice_id,
+                json.dumps({"updated_fields": list(updates.keys())}),
+                now,
+            ),
+        ),
+    ])
+
+    row = query_single(
+        "SELECT * FROM invoices WHERE id = %s AND business_id = %s",
+        (invoice_id, business_id),
+    )
+    row["line_items"] = json.loads(row["line_items"]) if isinstance(row["line_items"], str) else row["line_items"]
+    return InvoiceResponse(**row)
+
+
+# ---------------------------------------------------------------------------
+# 21. GET /invoices/{invoice_id}/pdf — generate PDF for saved invoice
+# ---------------------------------------------------------------------------
+
+@app.get("/invoices/{invoice_id}/pdf")
+async def get_invoice_pdf(invoice_id: str, user: dict = Depends(get_current_user)):
+    """Generate a PDF for a persisted invoice using render_invoice_pdf."""
+    from reports import render_invoice_pdf
+
+    business_id = user["business_id"]
+
+    row = query_single(
+        "SELECT * FROM invoices WHERE id = %s AND business_id = %s",
+        (invoice_id, business_id),
+    )
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "NOT_FOUND", "message": "Invoice not found"}},
+        )
+
+    line_items = json.loads(row["line_items"]) if isinstance(row["line_items"], str) else row["line_items"]
+
+    # Fetch business details for the PDF header
+    biz = _fetch_business_info(business_id)
+
+    # Fetch current VAT rate
+    rates = _fetch_rates()
+    vat_rate_bps = 1500
+    today = date.today()
+    for r in rates:
+        if r.get("rate_code") == "VAT_STANDARD":
+            eff_from = r.get("effective_from")
+            eff_to = r.get("effective_to")
+            if eff_from and eff_from <= today and (eff_to is None or eff_to >= today):
+                vat_rate_bps = r["percentage_basis_points"]
+                break
+
+    business_data = {
+        "legal_name": biz.get("name", ""),
+        "trading_name": biz.get("name", ""),
+        "tax_identification_number": biz.get("tin", "N/A"),
+        "country_code": "GH",
+    }
+
+    request_data = {
+        "customer_name": row["customer_name"],
+        "customer_tin": row.get("customer_tin"),
+        "line_items": line_items,
+        "notes": row.get("notes"),
+    }
+
+    pdf_bytes = render_invoice_pdf(business_data, request_data, vat_rate_bps)
+
+    filename = f"invoice-{row.get('invoice_number') or invoice_id[:8]}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ---------------------------------------------------------------------------

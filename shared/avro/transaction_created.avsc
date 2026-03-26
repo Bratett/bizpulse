@@ -1,0 +1,19 @@
+{
+  "type": "record",
+  "name": "TransactionCreated",
+  "namespace": "ai.bizpulse.events",
+  "doc": "Emitted when a new financial transaction is appended to the ledger.",
+  "fields": [
+    {"name": "event_id", "type": "string", "doc": "Unique event identifier (UUID)"},
+    {"name": "idempotency_key", "type": "string", "doc": "Client-provided idempotency key"},
+    {"name": "transaction_id", "type": "string", "doc": "Transaction UUID"},
+    {"name": "business_id", "type": "string", "doc": "Owning business UUID"},
+    {"name": "type", "type": {"type": "enum", "name": "TransactionType", "symbols": ["INCOME", "EXPENSE"]}},
+    {"name": "amount_pesewas", "type": "long", "doc": "Amount in pesewas (minor units)"},
+    {"name": "account_code", "type": "string", "doc": "IFRS chart of accounts code"},
+    {"name": "description", "type": ["null", "string"], "default": null},
+    {"name": "transaction_date", "type": "string", "doc": "ISO 8601 date (YYYY-MM-DD)"},
+    {"name": "created_by", "type": "string", "doc": "User UUID who created the transaction"},
+    {"name": "created_at", "type": "string", "doc": "ISO 8601 timestamp (UTC)"}
+  ]
+}
